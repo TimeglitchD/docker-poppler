@@ -2,14 +2,37 @@ import os
 import uuid
 import tempfile
 import subprocess as sp
+from json import JSONEncoder
 from werkzeug.utils import secure_filename
 from flask import Flask, request, send_file, send_from_directory
+
+class CalledProcessErrorEncoder(JSONEncoder):
+        def default(self, o):
+            return o.__dict__
 
 app = Flask(__name__)
 
 @app.route("/")
 def index():
-    return 'Welcome to chanmo/poppler'
+    return 'Welcome to timeglitchd/poppler'
+
+@app.route("/inkscape", methods=['POST'])
+def inkscape():
+    if 'file' not in request.files:
+        return {
+            'success': False,
+            'message': 'file is required.'
+        }
+
+    file = request.files['file']
+    infile = tempfile.NamedTemporaryFile(suffix='.pdf')
+    file.save(infile.name)
+    outfile = str(uuid.uuid4())
+    os.mkdir(f'./media/{outfile}')
+    sp.run(['inkscape', '--export-type=svg', f'--export-filename=./media/{outfile}/output.svg', infile.name], check=True)
+    return {
+        'images': [f'/media/{outfile}/{i}' for i in os.listdir(f'./media/{outfile}/')]
+    }
 
 @app.route("/pdftocairo", methods=['POST'])
 def pdftocairo():
@@ -24,46 +47,10 @@ def pdftocairo():
     file.save(infile.name)
     outfile = str(uuid.uuid4())
     os.mkdir(f'./media/{outfile}')
-    sp.run(['pdftocairo', '-png', infile.name, f'./media/{outfile}/output'], check=True)
+    sp.run(['pdftocairo', '-svg', infile.name, f'./media/{outfile}/output.svg'], check=True)
     return {
         'images': [f'/media/{outfile}/{i}' for i in os.listdir(f'./media/{outfile}/')]
     }
-
-
-@app.route("/pdftoppm", methods=['POST'])
-def pdftoppm():
-    if 'file' not in request.files:
-        return {
-            'success': False,
-            'message': 'file is required.'
-        }
-
-    file = request.files['file']
-    infile = tempfile.NamedTemporaryFile()
-    file.save(infile.name)
-    outfile = str(uuid.uuid4())
-    os.mkdir(f'./media/{outfile}')
-    os.chdir(f'./media/{outfile}')
-    sp.run(['pdftoppm', '-png', infile.name, 'output'], check=True)
-    return {
-        'images': [f'/media/{outfile}/{i}' for i in os.listdir('./')]
-    }
-
-
-@app.route("/pdftohtml", methods=['POST'])
-def pdftohtml():
-    if 'file' not in request.files:
-        return {
-            'success': False,
-            'message': 'file is required.'
-        }
-
-    file = request.files['file']
-    infile = tempfile.NamedTemporaryFile()
-    file.save(infile.name)
-
-    output = sp.run(['pdftohtml', '-s', '-dataurls', '-noframes', '-stdout', infile.name], check=True, capture_output=True)
-    return output.stdout
 
 @app.route("/pdfinfo", methods=['POST'])
 def pdfinfo():
